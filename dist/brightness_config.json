@@ -2,6 +2,8 @@
     "refresh_0": true,
     "refresh_1": false,
     "brightness_1": 100,
-    "minimize_to_tray": true,
+    "minimize_to_tray": false,
+    "auto_minimize": true,
+    "start_minimized": false,
     "run_on_startup": false
 }

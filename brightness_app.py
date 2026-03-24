@@ -32,6 +32,8 @@ def save_config(cfg):
 
 config = load_config()
 
+tray_icon = None 
+
 
 # =================== BRIGHTNESS FUNCTIONS ===================
 def get_monitors():
@@ -111,8 +113,10 @@ for idx, mon in enumerate(monitors):
 
 
 # =================== SAVE CONFIG ===================
-tray_var = tk.BooleanVar(value=config.get("minimize_to_tray", True))
+tray_var = tk.BooleanVar(value=config.get("minimize_to_tray", True))   # dùng cho nút X
+auto_minimize_var = tk.BooleanVar(value=config.get("auto_minimize", True))  # click ra ngoài
 startup_var = tk.BooleanVar(value=config.get("run_on_startup", False))
+start_minimized_var = tk.BooleanVar(value=config.get("start_minimized", False))
 
 
 def save_all_config():
@@ -124,6 +128,8 @@ def save_all_config():
             cfg[f"brightness_{i}"] = sliders[i].get()
 
     cfg["minimize_to_tray"] = tray_var.get()
+    cfg["auto_minimize"] = auto_minimize_var.get()
+    cfg["start_minimized"] = start_minimized_var.get()
     cfg["run_on_startup"] = startup_var.get()
 
     save_config(cfg)
@@ -142,18 +148,28 @@ menu_btn.pack(side='right', padx=4)
 menu = tk.Menu(menu_btn, tearoff=0)
 menu_btn.config(menu=menu)
 menu.add_checkbutton(label="Minimize to tray on close", variable=tray_var, command=save_all_config)
+menu.add_checkbutton(
+    label="Auto minimize when losing focus",
+    variable=auto_minimize_var,
+    command=save_all_config
+)
 menu.add_checkbutton(label="Run on Windows startup", variable=startup_var,
                      command=lambda: (toggle_startup(startup_var.get()), save_all_config()))
+menu.add_checkbutton(
+    label="Start minimized",
+    variable=start_minimized_var,
+    command=save_all_config
+)
 
-tk.Button(menu_frame, text="🗕", width=3, bg="#35b5df", fg="white",
-          command=lambda: minimize_to_tray_func()).pack(side='right', padx=4)
-
-def exit_app():
+def on_close():
     save_all_config()
-    root.destroy()
+    if tray_var.get():
+        minimize_to_tray_func()
+    else:
+        root.destroy()
 
 tk.Button(menu_frame, text="Exit", width=5, bg="#ff4444", fg="white",
-          font=("Arial", 9, "bold"), command=exit_app).pack(side='right', padx=4)
+          font=("Arial", 9, "bold"), command = on_close).pack(side='right', padx=4)
 
 
 # =================== STARTUP ===================
@@ -184,8 +200,11 @@ def create_image():
 
 
 def show_window(icon=None, item=None):
-    if icon:
-        icon.stop()
+    global tray_icon
+
+    if tray_icon:
+        tray_icon.stop()
+        tray_icon = None
 
     def refresh_and_show():
         for i, var in enumerate(refresh_vars):
@@ -193,22 +212,20 @@ def show_window(icon=None, item=None):
                 continue
             if var.get():
                 sliders[i].set(get_brightness(monitors[i]))
-            else:
-                current = get_brightness(monitors[i])
-                saved = config.get(f"brightness_{i}")
-                if current == 0 and saved is not None:
-                    sliders[i].set(saved)
 
-        root.deiconify()        # hiện cửa sổ
-        root.lift()             # đưa lên trên tất cả cửa sổ
-        root.focus_force()      # ép focus vào cửa sổ
+        root.deiconify()
+        root.lift()
+        root.focus_force()
 
     root.after(0, refresh_and_show)
 
 
-def minimize_to_tray_func():
-    save_all_config()
-    root.withdraw()
+
+
+def create_tray_if_not_exists():
+    global tray_icon
+    if tray_icon:
+        return  # đã có rồi thì thôi
 
     tray_icon = pystray.Icon(
         "brightness_app",
@@ -221,6 +238,11 @@ def minimize_to_tray_func():
     )
     threading.Thread(target=tray_icon.run, daemon=True).start()
 
+def minimize_to_tray_func():
+    save_all_config()
+    root.withdraw()
+    create_tray_if_not_exists()
+
 
 def on_exit(icon=None, item=None):
     if icon:
@@ -228,19 +250,20 @@ def on_exit(icon=None, item=None):
     root.destroy()
 
 
-def on_close():
-    save_all_config()
-    if tray_var.get():
-        minimize_to_tray_func()
-    else:
-        root.destroy()
+
+
+def check_focus_and_hide():
+    if not root.focus_displayof():
+        root.withdraw()
+        create_tray_if_not_exists()
 
 # =================== Ẩn khi click ra ngoài ===================
 def minimize_on_focus_out(event):
-    # Nếu đang hiển thị và bật setting minimize to tray
-    if root.state() != "withdrawn" and tray_var.get():
-        root.withdraw()  # ẩn window
-        minimize_to_tray_func()  # đảm bảo tray icon tồn tại
+    # Không auto minimize nếu user không bật
+    if not auto_minimize_var.get():
+        return
+    root.after(150, check_focus_and_hide)
+
 
 # Bind sự kiện mất focus
 root.bind("<FocusOut>", minimize_on_focus_out)
@@ -248,7 +271,8 @@ root.bind("<FocusOut>", minimize_on_focus_out)
 root.protocol("WM_DELETE_WINDOW", on_close)
 
 # =================== Xử lý startup ẩn UI ===================
-start_hidden = config.get("minimize_on_startup", True)
+start_hidden = config.get("start_minimized", False)
+
 if start_hidden:
     minimize_to_tray_func()
 else:
