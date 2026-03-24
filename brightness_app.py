@@ -199,9 +199,9 @@ def show_window(icon=None, item=None):
                 if current == 0 and saved is not None:
                     sliders[i].set(saved)
 
-        root.deiconify()
-        root.lift()
-        root.attributes("-topmost", True)
+        root.deiconify()        # hiện cửa sổ
+        root.lift()             # đưa lên trên tất cả cửa sổ
+        root.focus_force()      # ép focus vào cửa sổ
 
     root.after(0, refresh_and_show)
 
@@ -235,17 +235,23 @@ def on_close():
     else:
         root.destroy()
 
+# =================== Ẩn khi click ra ngoài ===================
+def minimize_on_focus_out(event):
+    # Nếu đang hiển thị và bật setting minimize to tray
+    if root.state() != "withdrawn" and tray_var.get():
+        root.withdraw()  # ẩn window
+        minimize_to_tray_func()  # đảm bảo tray icon tồn tại
+
+# Bind sự kiện mất focus
+root.bind("<FocusOut>", minimize_on_focus_out)
 
 root.protocol("WM_DELETE_WINDOW", on_close)
 
 # =================== Xử lý startup ẩn UI ===================
 start_hidden = config.get("minimize_on_startup", True)
-
 if start_hidden:
-    # Chỉ tạo tray icon, không show UI
     minimize_to_tray_func()
 else:
-    # Hiển thị UI bình thường
     root.deiconify()
 
 root.mainloop()
