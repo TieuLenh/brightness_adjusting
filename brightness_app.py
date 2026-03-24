@@ -9,9 +9,12 @@ import sys
 import winshell
 import json
 from win32com.client import Dispatch
+import win32event
+import win32api
+import winerror
 
 CONFIG_FILE = "brightness_config.json"
-
+SIGNAL_FILE = "app_signal.tmp"
 
 # =================== CONFIG ===================
 def load_config():
@@ -31,9 +34,16 @@ def save_config(cfg):
         pass
 
 config = load_config()
+# =================== SINGLE INSTANCE ===================
+mutex = win32event.CreateMutex(None, False, "BrightnessAppMutex")
+
+if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
+    # Gửi tín hiệu cho instance đang chạy
+    with open(SIGNAL_FILE, "w") as f:
+        f.write("show")
+    sys.exit(0)
 
 tray_icon = None 
-
 
 # =================== BRIGHTNESS FUNCTIONS ===================
 def get_monitors():
@@ -55,7 +65,6 @@ def set_brightness(monitor_name, idx, value):
     except Exception as e:
         messagebox.showerror(f"Error monitor {idx+1}", str(e))
 
-
 # =================== MAIN GUI ===================
 root = tk.Tk()
 root.title("Brightness App")
@@ -76,7 +85,6 @@ root.resizable(False, False)
 
 sliders = []
 refresh_vars = []
-
 
 def make_monitor_row(monitor_name, idx):
     frame = tk.Frame(root)
@@ -107,17 +115,14 @@ def make_monitor_row(monitor_name, idx):
 
     tk.Checkbutton(frame, text="Always Refresh", variable=var, font=("Arial", 9)).pack(anchor='w')
 
-
 for idx, mon in enumerate(monitors):
     make_monitor_row(mon, idx)
-
 
 # =================== SAVE CONFIG ===================
 tray_var = tk.BooleanVar(value=config.get("minimize_to_tray", True))   # dùng cho nút X
 auto_minimize_var = tk.BooleanVar(value=config.get("auto_minimize", True))  # click ra ngoài
 startup_var = tk.BooleanVar(value=config.get("run_on_startup", False))
 start_minimized_var = tk.BooleanVar(value=config.get("start_minimized", False))
-
 
 def save_all_config():
     cfg = {}
@@ -135,7 +140,6 @@ def save_all_config():
     save_config(cfg)
     global config
     config = cfg.copy()          # Cập nhật config trong RAM
-
 
 # =================== MENU & BUTTONS ===================
 menu_frame = tk.Frame(root)
@@ -171,7 +175,6 @@ def on_close():
 tk.Button(menu_frame, text="Exit", width=5, bg="#ff4444", fg="white",
           font=("Arial", 9, "bold"), command = on_close).pack(side='right', padx=4)
 
-
 # =================== STARTUP ===================
 def toggle_startup(enabled: bool):
     try:
@@ -190,14 +193,12 @@ def toggle_startup(enabled: bool):
     except:
         pass
 
-
 # =================== SYSTEM TRAY ===================
 def create_image():
     img = Image.new('RGB', (64, 64), color='#1e90ff')
     draw = ImageDraw.Draw(img)
     draw.text((18, 12), "☀", fill="white", size=38)
     return img
-
 
 def show_window(icon=None, item=None):
     global tray_icon
@@ -218,9 +219,6 @@ def show_window(icon=None, item=None):
         root.focus_force()
 
     root.after(0, refresh_and_show)
-
-
-
 
 def create_tray_if_not_exists():
     global tray_icon
@@ -243,14 +241,10 @@ def minimize_to_tray_func():
     root.withdraw()
     create_tray_if_not_exists()
 
-
 def on_exit(icon=None, item=None):
     if icon:
         icon.stop()
     root.destroy()
-
-
-
 
 def check_focus_and_hide():
     if not root.focus_displayof():
@@ -277,5 +271,13 @@ if start_hidden:
     minimize_to_tray_func()
 else:
     root.deiconify()
+
+def check_signal():
+    if os.path.exists(SIGNAL_FILE):
+        os.remove(SIGNAL_FILE)
+        show_window()
+    root.after(500, check_signal)
+
+check_signal()
 
 root.mainloop()
