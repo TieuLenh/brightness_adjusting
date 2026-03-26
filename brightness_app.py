@@ -79,8 +79,11 @@ if not monitors:
 # Vị trí cửa sổ
 screen_w = root.winfo_screenwidth()
 screen_h = root.winfo_screenheight()
-win_w = 430
-win_h = len(monitors) * 115 + 70
+root.update_idletasks()
+
+win_w = root.winfo_width()
+win_h = root.winfo_reqheight()
+
 root.geometry(f"{win_w}x{win_h}+{screen_w - win_w - 10}+{screen_h - win_h - 100}")
 root.resizable(False, False)
 
@@ -90,8 +93,8 @@ def position_window():
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
 
-    win_w = root.winfo_width()
-    win_h = root.winfo_height()
+    win_w = root.winfo_reqwidth()
+    win_h = root.winfo_reqheight()
 
     x = screen_w - win_w - 10
     y = screen_h - win_h - 100
@@ -234,7 +237,11 @@ def rebuild_ui():
 
         for idx, mon in enumerate(new_monitors):
             make_monitor_row(mon, idx)
-        win_h = len(new_monitors) * 115 + 70
+        
+        root.update_idletasks()
+        win_w = root.winfo_width()
+        win_h = root.winfo_reqheight()
+        root.geometry(f"{win_w}x{win_h}")
         position_window()
     except Exception as e:
         print("Rebuild UI error:", e)
