@@ -208,7 +208,7 @@ def make_monitor_row(monitor_name, idx):
     refresh_vars.append(var)
     var.trace("w", lambda *args: save_all_config())
 
-    tk.Checkbutton(frame, text="Always Refresh", variable=var, font=("Arial", 9)).pack(anchor='w')
+    tk.Checkbutton(frame, text="Auto Refresh", variable=var, font=("Arial", 9)).pack(anchor='w')
 
 for idx, mon in enumerate(current_monitors):
     make_monitor_row(mon, idx)
@@ -288,7 +288,7 @@ def save_all_config():
 def save_brightness_if_needed(i):
     monitor_id = monitor_ids[i]
 
-    # chỉ lưu nếu KHÔNG bật Always Refresh
+    # chỉ lưu nếu KHÔNG bật Auto Refresh
     if not refresh_vars[i].get():
         config[f"brightness_{monitor_id}"] = sliders[i].get()
         save_config(config)
