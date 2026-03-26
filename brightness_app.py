@@ -296,13 +296,35 @@ def save_brightness_if_needed(i):
 # =================== MENU & BUTTONS ===================
 menu_frame = tk.Frame(root)
 menu_frame.pack(fill='x', padx=8, pady=4)
+def show_menu(event=None):
+    root.update_idletasks()
+
+    # tọa độ nút ⚙ trên màn hình
+    btn_x = menu_btn.winfo_rootx()
+    btn_y = menu_btn.winfo_rooty()
+    btn_w = menu_btn.winfo_width()
+
+    # kích thước menu
+    menu.update_idletasks()
+    menu_w = menu.winfo_reqwidth()
+    menu_h = menu.winfo_reqheight()
+
+    # 👉 căn phải menu = căn phải nút
+    x = btn_x + btn_w - menu_w
+
+    # 👉 đặt menu phía trên nút
+    y = btn_y - menu_h
+
+    menu.post(x, y)
 
 menu_btn = tk.Menubutton(menu_frame, text="⚙", bg="#b10eb6", fg="white",
                          relief=tk.RAISED, font=("Arial", 12))
 menu_btn.pack(side='right', padx=4)
-
+menu_btn.bind("<Button-1>", show_menu)
 menu = tk.Menu(menu_btn, tearoff=0)
-menu_btn.config(menu=menu)
+
+
+
 menu.add_checkbutton(label="Minimize to tray on close", variable=tray_var, command=save_all_config)
 menu.add_checkbutton(
     label="Auto minimize when losing focus",
