@@ -12,6 +12,7 @@ from win32com.client import Dispatch
 import win32event
 import win32api
 import winerror
+import time
 
 CONFIG_FILE = "brightness_config.json"
 SIGNAL_FILE = "app_signal.tmp"
@@ -83,25 +84,119 @@ win_h = len(monitors) * 115 + 70
 root.geometry(f"{win_w}x{win_h}+{screen_w - win_w - 10}+{screen_h - win_h - 100}")
 root.resizable(False, False)
 
+def position_window():
+    root.update_idletasks()  # đảm bảo kích thước đúng
+
+    screen_w = root.winfo_screenwidth()
+    screen_h = root.winfo_screenheight()
+
+    win_w = root.winfo_width()
+    win_h = root.winfo_height()
+
+    x = screen_w - win_w - 10
+    y = screen_h - win_h - 100
+
+    root.geometry(f"{win_w}x{win_h}+{x}+{y}")
+
 sliders = []
 refresh_vars = []
 
+def generate_monitor_ids(monitors):
+    ids = []
+    name_count = {}
+
+    for name in monitors:
+        base = name.strip().lower()
+
+        count = name_count.get(base, 0)
+        name_count[base] = count + 1
+
+        if count > 0 or "generic" in base or "none" in base:
+            unique_id = f"{base}_{count}"
+        else:
+            unique_id = base
+
+        ids.append(unique_id)
+
+    return ids
+
+monitor_ids = generate_monitor_ids(monitors)
+current_monitors = monitors.copy()
+
+monitor_container = tk.Frame(root)
+monitor_container.pack(fill='both', expand=True)
+
+
 def make_monitor_row(monitor_name, idx):
-    frame = tk.Frame(root)
+    monitor_id = monitor_ids[idx]
+
+    frame = tk.Frame(monitor_container)
     frame.pack(fill='x', padx=10, pady=6)
 
     tk.Label(frame, text=f"Monitor {idx+1}: {monitor_name}", font=("Arial", 10, "bold")).pack(anchor='w')
 
-    slider = tk.Scale(frame, from_=0, to=100, orient=tk.HORIZONTAL,
-                      command=lambda v, m=monitor_name, i=idx: set_brightness(m, i, v),
-                      length=360, sliderlength=12, cursor='hand2', width=10)
+    slider = tk.Scale(
+        frame,
+        from_=0,
+        to=100,
+        orient=tk.HORIZONTAL,
+        # command=on_slider_change,
+        length=360,
+        sliderlength=12,
+        cursor='hand2',
+        width=10
+    )
+    click_state = {
+        "time": 0,
+        "x": 0,
+        "dragging": False
+    }
+
+    def on_press(event):
+        click_state["time"] = time.time()
+        click_state["x"] = event.x
+        click_state["dragging"] = False
+
+    def on_motion(event):
+        if abs(event.x - click_state["x"]) > 5:
+            click_state["dragging"] = True
+
+            # 👉 drag realtime (mượt hơn)
+            value = (event.x / slider.winfo_width()) * 100
+            value = max(0, min(100, value))
+
+            slider.set(int(value))
+            set_brightness(monitor_name, idx, value)
+
+    def on_release(event):
+        dt = time.time() - click_state["time"]
+
+        if not click_state["dragging"] and dt < 0.15:
+            # 👉 CLICK
+            value = (event.x / slider.winfo_width()) * 100
+            value = max(0, min(100, value))
+
+            slider.set(int(value))
+            set_brightness(monitor_name, idx, value)
+
+        else:
+            # 👉 DRAG (đã xử lý realtime rồi)
+            value = slider.get()
+
+        save_brightness_if_needed(idx)
+
+    # bind
+    slider.bind("<Button-1>", on_press)
+    slider.bind("<B1-Motion>", on_motion)
+    slider.bind("<ButtonRelease-1>", on_release)
+
     slider.pack(fill='x', pady=2)
 
     # Load giá trị ban đầu
     current = get_brightness(monitor_name)
-    saved = config.get(f"brightness_{idx}")
 
-    if not config.get(f"refresh_{idx}", True) and current == 0 and saved is not None:
+    saved = config.get(f"brightness_{monitor_id}")
+    if not config.get(f"refresh_{monitor_id}", True) and current == 0 and saved is not None:
         slider.set(saved)
     else:
         slider.set(current)
@@ -109,14 +204,62 @@ def make_monitor_row(monitor_name, idx):
     sliders.append(slider)
 
     # Checkbox
-    var = tk.BooleanVar(value=config.get(f"refresh_{idx}", True))
+    var = tk.BooleanVar(value=config.get(f"refresh_{monitor_id}", True))
     refresh_vars.append(var)
     var.trace("w", lambda *args: save_all_config())
 
     tk.Checkbutton(frame, text="Always Refresh", variable=var, font=("Arial", 9)).pack(anchor='w')
 
-for idx, mon in enumerate(monitors):
+for idx, mon in enumerate(current_monitors):
     make_monitor_row(mon, idx)
+
+
+def rebuild_ui():
+    global sliders, refresh_vars, monitor_ids, current_monitors
+
+    try:
+        for widget in monitor_container.winfo_children():
+            widget.destroy()
+
+        sliders.clear()
+        refresh_vars.clear()
+
+        new_monitors = get_monitors()
+
+        if not new_monitors:
+            return  # ❗ thêm luôn ở đây
+
+        monitor_ids = generate_monitor_ids(new_monitors)
+        current_monitors = new_monitors
+
+        for idx, mon in enumerate(new_monitors):
+            make_monitor_row(mon, idx)
+        win_h = len(new_monitors) * 115 + 70
+        position_window()
+    except Exception as e:
+        print("Rebuild UI error:", e)
+
+last_screen_size = (root.winfo_screenwidth(), root.winfo_screenheight())
+
+def monitor_watcher():
+    global current_monitors, last_screen_size
+
+    new_monitors = get_monitors()
+    current_size = (root.winfo_screenwidth(), root.winfo_screenheight())
+
+    if current_size != last_screen_size:
+        last_screen_size = current_size
+        position_window()  # 🔥 fix lệch góc
+
+    if not new_monitors:
+        root.after(1000, monitor_watcher)
+        return
+
+    if not sliders or new_monitors != current_monitors:
+        rebuild_ui()
+        position_window()
+
+    root.after(1000, monitor_watcher)
 
 # =================== SAVE CONFIG ===================
 tray_var = tk.BooleanVar(value=config.get("minimize_to_tray", True))   # dùng cho nút X
@@ -127,10 +270,11 @@ start_minimized_var = tk.BooleanVar(value=config.get("start_minimized", False))
 def save_all_config():
     cfg = {}
     for i, var in enumerate(refresh_vars):
+        monitor_id = monitor_ids[i]
         refresh = var.get()
-        cfg[f"refresh_{i}"] = refresh
+        cfg[f"refresh_{monitor_id}"] = refresh
         if not refresh:
-            cfg[f"brightness_{i}"] = sliders[i].get()
+            cfg[f"brightness_{monitor_id}"] = sliders[i].get()
 
     cfg["minimize_to_tray"] = tray_var.get()
     cfg["auto_minimize"] = auto_minimize_var.get()
@@ -140,6 +284,14 @@ def save_all_config():
     save_config(cfg)
     global config
     config = cfg.copy()          # Cập nhật config trong RAM
+
+def save_brightness_if_needed(i):
+    monitor_id = monitor_ids[i]
+
+    # chỉ lưu nếu KHÔNG bật Always Refresh
+    if not refresh_vars[i].get():
+        config[f"brightness_{monitor_id}"] = sliders[i].get()
+        save_config(config)
 
 # =================== MENU & BUTTONS ===================
 menu_frame = tk.Frame(root)
@@ -212,11 +364,12 @@ def show_window(icon=None, item=None):
             if i >= len(sliders):
                 continue
             if var.get():
-                sliders[i].set(get_brightness(monitors[i]))
+                sliders[i].set(get_brightness(current_monitors[i]))
 
         root.deiconify()
         root.lift()
         root.focus_force()
+        position_window()
 
     root.after(0, refresh_and_show)
 
@@ -280,4 +433,5 @@ def check_signal():
 
 check_signal()
 
+monitor_watcher()
 root.mainloop()

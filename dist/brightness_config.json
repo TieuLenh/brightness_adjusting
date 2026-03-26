@@ -1,7 +1,6 @@
 {
-    "refresh_0": true,
-    "refresh_1": false,
-    "brightness_1": 100,
+    "refresh_none generic monitor_0": false,
+    "brightness_none generic monitor_0": 57,
     "minimize_to_tray": false,
     "auto_minimize": true,
     "start_minimized": false,
